@@ -1,0 +1,9 @@
+infra/.env
+**/__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
+*.log
+n8n_data/
+postgres_data/

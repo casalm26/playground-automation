@@ -1,0 +1,244 @@
+Great call. Treat the droplet as “runtime only,” and keep all logic in a Git repo. You can still use Claude Code to help you write code, but commit → push → deploy from GitHub. Editing the live server tends to rot (no history, hard to roll back, risky with secrets).
+
+What to do (lean, proven path)
+	1.	Create a new GitHub repo as the single source of truth.
+Use a simple monorepo: infra/ for Docker, services/ for your Python app(s), and config files you’ll version. You’ll deploy by git pull + docker compose up -d on the droplet (or add CI later).
+	2.	Run everything with Docker Compose.
+One reverse proxy (TLS + domains), one n8n, one Postgres for n8n, and one FastAPI service for your “heavy” logic (content + ads). That’s enough for MVP.
+	3.	Point subdomains at the droplet.
+Example: n8n.yourdomain.com → n8n UI, api.yourdomain.com → your FastAPI. This lets you lock n8n behind auth and keeps clean boundaries.
+	4.	Keep secrets out of Git.
+Use .env files on the droplet (not committed), or a secrets manager later.
+	5.	Iterate locally with Claude/your IDE, push to GitHub, then deploy by pulling on the droplet.
+Add CI/CD once you’re comfortable.
+
+⸻
+
+Minimal starter you can copy
+
+Repo layout
+
+your-repo/
+  infra/
+    docker-compose.yml
+    Caddyfile
+    .env.example
+  services/
+    content-api/
+      app/
+        main.py
+      requirements.txt
+      Dockerfile
+  .gitignore
+
+infra/docker-compose.yml
+
+version: "3.9"
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - n8n
+      - content-api
+    networks: [net]
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${N8N_DB_USER}
+      POSTGRES_PASSWORD: ${N8N_DB_PASS}
+      POSTGRES_DB: ${N8N_DB_NAME}
+    volumes:
+      - n8n_db:/var/lib/postgresql/data
+    networks: [net]
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${N8N_HOST}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: https://${N8N_HOST}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASS}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_PASS}
+      GENERIC_TIMEZONE: Europe/Amsterdam
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks: [net]
+
+  content-api:
+    build: ../services/content-api
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN}
+    networks: [net]
+
+networks:
+  net:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  n8n_db:
+  n8n_data:
+
+infra/Caddyfile
+
+# n8n UI
+{$N8N_HOST} {
+  encode zstd gzip
+  reverse_proxy n8n:5678
+}
+
+# FastAPI
+{$API_HOST} {
+  encode zstd gzip
+  reverse_proxy content-api:8000
+}
+
+infra/.env.example (copy to infra/.env on the server and fill in)
+
+N8N_HOST=n8n.yourdomain.com
+API_HOST=api.yourdomain.com
+
+N8N_DB_USER=n8n
+N8N_DB_PASS=change_me
+N8N_DB_NAME=n8n
+
+N8N_BASIC_USER=admin
+N8N_BASIC_PASS=change_me_strong
+
+OPENAI_API_KEY=sk-...
+META_ACCESS_TOKEN=EAAB...
+
+services/content-api/app/main.py
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+import httpx, os
+
+app = FastAPI()
+
+class CampaignIn(BaseModel):
+    product: str
+    persona: str
+    tone: str = "professional"
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/generate-campaign")
+async def generate_campaign(data: CampaignIn):
+    # Example: call your LLM (pseudo – replace with real API)
+    prompt = f"Write a LinkedIn post for {data.product} targeting {data.persona} in a {data.tone} tone. 80-120 words, with a CTA."
+    # Replace with your preferred LLM/API call
+    async with httpx.AsyncClient(timeout=60) as client:
+        # Example stub response instead of real LLM:
+        text = f"{data.product} helps {data.persona} move faster. Try it today."
+    return {
+        "linkedin_post": text,
+        "blog_outline": [
+            "Problem", "Solution", "How it works", "CTA"
+        ]
+    }
+
+class AdIn(BaseModel):
+    headline: str
+    body: str
+    url: str
+    budget_daily: float
+
+@app.post("/ads/publish")
+async def publish_ad(ad: AdIn):
+    # TODO: call Meta/Google Ads APIs with your credentials
+    # For MVP, just echo back (wire from n8n later)
+    return {"status": "queued", "platform": "meta", "ad_preview": ad.dict()}
+
+services/content-api/requirements.txt
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.0
+httpx==0.27.0
+pydantic==2.7.1
+
+services/content-api/Dockerfile
+
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+.gitignore
+
+infra/.env
+**/__pycache__/
+
+
+⸻
+
+Deploy on the droplet (first time)
+	1.	Point DNS. Create A records n8n.yourdomain.com and api.yourdomain.com to the droplet IP.
+	2.	Install Docker.
+
+sudo apt update && sudo apt -y install ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update && sudo apt -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker $USER
+
+Log out/in to apply the docker group.
+	3.	Clone and boot.
+
+git clone https://github.com/you/your-repo.git
+cd your-repo/infra
+cp .env.example .env    # fill it in
+docker compose up -d --build
+
+Caddy will auto-issue TLS; n8n UI will be at https://n8n.yourdomain.com (basic auth on), FastAPI at https://api.yourdomain.com/health.
+
+⸻
+
+Wire n8n to your service (MVP)
+
+In n8n, create a workflow:
+	1.	Trigger (Cron or Webhook).
+	2.	HTTP Request → POST https://api.yourdomain.com/generate-campaign with JSON { product, persona, tone }.
+	3.	Use the JSON output to post to channels:
+	•	LinkedIn/Facebook: either call your own /ads/publish endpoint or the platform APIs directly from n8n HTTP nodes.
+	4.	Human-in-the-loop: add a Webhook node and send a Slack message with an “Approve” link to that webhook; connect it before publishing ads or before posting content.
+	5.	Analytics: on a schedule, pull ad stats (HTTP nodes) and write to your DB or a Google Sheet for now.
+
+⸻
+
+Why this beats editing the droplet directly
+
+You get history, rollbacks, code reviews, branches, and CI later. Your server stays clean: git pull && docker compose up -d is your deploy. If you later outgrow n8n, you keep the same FastAPI services and swap orchestration without rewriting the core.
+
+If you want, I can tailor the Caddyfile and .env to your actual domain, or add a simple GitHub Action that SSHes into the droplet and runs docker compose up -d on push to main.

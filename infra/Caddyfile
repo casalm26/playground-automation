@@ -1,0 +1,11 @@
+# n8n UI
+{$N8N_HOST} {
+  encode zstd gzip
+  reverse_proxy n8n:5678
+}
+
+# FastAPI
+{$API_HOST} {
+  encode zstd gzip
+  reverse_proxy content-api:8000
+}

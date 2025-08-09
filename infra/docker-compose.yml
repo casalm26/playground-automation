@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - n8n
+      - content-api
+    networks: [net]
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${N8N_DB_USER}
+      POSTGRES_PASSWORD: ${N8N_DB_PASS}
+      POSTGRES_DB: ${N8N_DB_NAME}
+    volumes:
+      - n8n_db:/var/lib/postgresql/data
+    networks: [net]
+
+  postgres-app:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${APP_DB_USER}
+      POSTGRES_PASSWORD: ${APP_DB_PASS}
+      POSTGRES_DB: ${APP_DB_NAME}
+    volumes:
+      - app_db:/var/lib/postgresql/data
+    networks: [net]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks: [net]
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${N8N_HOST}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: https://${N8N_HOST}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASS}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_PASS}
+      GENERIC_TIMEZONE: Europe/Amsterdam
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks: [net]
+
+  content-api:
+    build: ../services/content-api
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN}
+      LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN}
+      GOOGLE_ADS_API_KEY: ${GOOGLE_ADS_API_KEY}
+      API_KEY: ${API_KEY}
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER}:${APP_DB_PASS}@postgres-app/${APP_DB_NAME}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - postgres-app
+      - redis
+    networks: [net]
+
+networks:
+  net:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  n8n_db:
+  n8n_data:
+  app_db:
+  redis_data:

@@ -1,0 +1,284 @@
+{
+  "name": "LinkedIn Posting Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "linkedin-post",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{$env.API_HOST}}/generate-campaign",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product",
+              "value": "={{$json[\"product\"]}}"
+            },
+            {
+              "name": "persona",
+              "value": "={{$json[\"persona\"]}}"
+            },
+            {
+              "name": "tone",
+              "value": "professional"
+            },
+            {
+              "name": "platforms",
+              "value": "=[\"linkedin\"]"
+            },
+            {
+              "name": "context",
+              "value": "={{$json[\"context\"]}}"
+            }
+          ]
+        }
+      },
+      "id": "generate-linkedin-content",
+      "name": "Generate LinkedIn Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$node[\"Generate LinkedIn Content\"].json[\"content\"][\"linkedin\"][\"content\"]}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "id": "check-content",
+      "name": "Check Content Generated",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "content",
+              "value": "={{$node[\"Generate LinkedIn Content\"].json[\"content\"][\"linkedin\"][\"content\"]}}"
+            },
+            {
+              "name": "headline",
+              "value": "={{$node[\"Generate LinkedIn Content\"].json[\"content\"][\"linkedin\"][\"headline\"]}}"
+            },
+            {
+              "name": "campaign_id",
+              "value": "={{$node[\"Generate LinkedIn Content\"].json[\"campaign_id\"]}}"
+            }
+          ],
+          "number": [
+            {
+              "name": "variations_count",
+              "value": "={{$node[\"Generate LinkedIn Content\"].json[\"variations\"].length}}"
+            }
+          ]
+        }
+      },
+      "id": "prepare-post-data",
+      "name": "Prepare Post Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "message": "=## LinkedIn Post Ready for Review\\n\\n**Campaign ID:** {{$node[\"Generate LinkedIn Content\"].json[\"campaign_id\"]}}\\n\\n**Headline:** {{$node[\"Prepare Post Data\"].json[\"headline\"]}}\\n\\n**Content:**\\n{{$node[\"Prepare Post Data\"].json[\"content\"]}}\\n\\n**Hashtags:** {{$node[\"Generate LinkedIn Content\"].json[\"content\"][\"linkedin\"][\"hashtags\"].join(\", \")}}\\n\\n**Variations Available:** {{$node[\"Prepare Post Data\"].json[\"variations_count\"]}}\\n\\nClick to approve posting to LinkedIn"
+      },
+      "id": "slack-review",
+      "name": "Send for Review",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1050, 250]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-approval",
+      "name": "Wait for Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "resource": "post",
+        "text": "={{$node[\"Prepare Post Data\"].json[\"content\"]}}",
+        "shareMediaCategory": "NONE",
+        "additionalFields": {}
+      },
+      "id": "post-to-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [1450, 250],
+      "disabled": true,
+      "notes": "Enable this node after configuring LinkedIn credentials"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{$env.API_HOST}}/analytics/performance",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content_id",
+              "value": "={{$node[\"Prepare Post Data\"].json[\"campaign_id\"]}}"
+            },
+            {
+              "name": "platform",
+              "value": "linkedin"
+            },
+            {
+              "name": "status",
+              "value": "published"
+            }
+          ]
+        }
+      },
+      "id": "track-posting",
+      "name": "Track Posting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 250]
+    },
+    {
+      "parameters": {
+        "message": "Failed to generate LinkedIn content. Please check the input data."
+      },
+      "id": "error-notification",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Generate LinkedIn Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate LinkedIn Content": {
+      "main": [
+        [
+          {
+            "node": "Check Content Generated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Content Generated": {
+      "main": [
+        [
+          {
+            "node": "Prepare Post Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Post Data": {
+      "main": [
+        [
+          {
+            "node": "Send for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send for Review": {
+      "main": [
+        [
+          {
+            "node": "Wait for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Approval": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Track Posting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "name": "Content Generation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{$env.API_HOST}}/generate-campaign",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product",
+              "value": "={{$node[\"Set Campaign Data\"].json[\"product\"]}}"
+            },
+            {
+              "name": "persona",
+              "value": "={{$node[\"Set Campaign Data\"].json[\"persona\"]}}"
+            },
+            {
+              "name": "tone",
+              "value": "professional"
+            },
+            {
+              "name": "platforms",
+              "value": "=[\"linkedin\", \"facebook\", \"twitter\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-content",
+      "name": "Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "product",
+              "value": "Your Product Name"
+            },
+            {
+              "name": "persona",
+              "value": "Marketing professionals and business owners"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-campaign-data",
+      "name": "Set Campaign Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "message": "=## New Content Generated! 🎉\\n\\n**Campaign ID:** {{$node[\"Generate Content\"].json[\"campaign_id\"]}}\\n\\n**Platforms:** LinkedIn, Facebook, Twitter\\n\\n**LinkedIn Content:**\\n{{$node[\"Generate Content\"].json[\"content\"][\"linkedin\"][\"content\"]}}\\n\\n**Review and approve:** [Click here to approve]({{$env.N8N_HOST}}/webhook/approve/{{$node[\"Generate Content\"].json[\"campaign_id\"]}})\\n\\n**Reject:** [Click here to reject]({{$env.N8N_HOST}}/webhook/reject/{{$node[\"Generate Content\"].json[\"campaign_id\"]}})",
+        "additionalFields": {
+          "attachments": [],
+          "otherOptions": {}
+        }
+      },
+      "id": "slack-notification",
+      "name": "Slack Approval Request",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "path": "approve/:campaign_id",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "approval-webhook",
+      "name": "Approval Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$node[\"Approval Webhook\"].json[\"query\"][\"status\"]}}",
+              "value2": "approved"
+            }
+          ]
+        }
+      },
+      "id": "check-approval",
+      "name": "Check Approval",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{$env.API_HOST}}/webhook/n8n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "event_type",
+              "value": "content_approved"
+            },
+            {
+              "name": "campaign_id",
+              "value": "={{$node[\"Generate Content\"].json[\"campaign_id\"]}}"
+            },
+            {
+              "name": "status",
+              "value": "approved"
+            },
+            {
+              "name": "data",
+              "value": "={{$node[\"Generate Content\"].json}}"
+            }
+          ]
+        }
+      },
+      "id": "publish-content",
+      "name": "Publish Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 450]
+    },
+    {
+      "parameters": {
+        "message": "Content rejected for campaign {{$node[\"Generate Content\"].json[\"campaign_id\"]}}"
+      },
+      "id": "rejection-notification",
+      "name": "Rejection Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1050, 550]
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Campaign Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Campaign Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Content": {
+      "main": [
+        [
+          {
+            "node": "Slack Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Approval": {
+      "main": [
+        [
+          {
+            "node": "Publish Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "content-generation-template"
+  },
+  "pinData": {},
+  "versionId": "1.0.0"
+}

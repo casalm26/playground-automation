@@ -1,0 +1,37 @@
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+class Settings(BaseSettings):
+    # API Keys
+    openai_api_key: str = ""
+    meta_access_token: str = ""
+    linkedin_access_token: str = ""
+    google_ads_api_key: str = ""
+    
+    # API Authentication
+    api_key: str = "change-me-to-secure-key"
+    api_key_header: str = "X-API-Key"
+    
+    # Database
+    database_url: Optional[str] = "postgresql+asyncpg://app:password@postgres-app/automation"
+    
+    # Redis (for queuing)
+    redis_url: str = "redis://redis:6379"
+    
+    # Rate Limiting
+    rate_limit_per_minute: int = 60
+    
+    # OpenAI Settings
+    openai_model: str = "gpt-4-turbo-preview"
+    openai_temperature: float = 0.7
+    openai_max_tokens: int = 2000
+    
+    # Environment
+    environment: str = "development"
+    debug: bool = True
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+settings = Settings()

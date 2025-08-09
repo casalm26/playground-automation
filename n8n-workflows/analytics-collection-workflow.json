@@ -1,0 +1,360 @@
+{
+  "name": "Analytics Collection Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{$env.API_HOST}}/schedule/pending",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        }
+      },
+      "id": "get-published-content",
+      "name": "Get Published Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-content",
+      "name": "Split Content Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"platform\"]}}",
+              "operation": "equal",
+              "value2": "linkedin"
+            }
+          ]
+        }
+      },
+      "id": "check-platform",
+      "name": "Check Platform",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.linkedin.com/v2/socialActions/{{$json[\"external_id\"]}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        }
+      },
+      "id": "get-linkedin-stats",
+      "name": "Get LinkedIn Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 250],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v18.0/{{$json[\"external_id\"]}}/insights",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{$env.META_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "metric",
+              "value": "post_impressions,post_engaged_users,post_clicks"
+            }
+          ]
+        }
+      },
+      "id": "get-facebook-stats",
+      "name": "Get Facebook Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 350],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "content_id",
+              "value": "={{$json[\"content_id\"]}}"
+            },
+            {
+              "name": "platform",
+              "value": "={{$json[\"platform\"]}}"
+            }
+          ],
+          "number": [
+            {
+              "name": "impressions",
+              "value": "={{Math.floor(Math.random() * 10000)}}"
+            },
+            {
+              "name": "clicks",
+              "value": "={{Math.floor(Math.random() * 500)}}"
+            },
+            {
+              "name": "engagement_rate",
+              "value": "={{Math.random() * 0.1}}"
+            },
+            {
+              "name": "conversions",
+              "value": "={{Math.floor(Math.random() * 50)}}"
+            }
+          ]
+        }
+      },
+      "id": "simulate-metrics",
+      "name": "Simulate Metrics",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1250, 300],
+      "notes": "Remove this and enable real API calls when ready"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{$env.API_HOST}}/analytics/performance",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content_id",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"content_id\"]}}"
+            },
+            {
+              "name": "platform",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"platform\"]}}"
+            },
+            {
+              "name": "impressions",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"impressions\"]}}"
+            },
+            {
+              "name": "clicks",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"clicks\"]}}"
+            },
+            {
+              "name": "engagement_rate",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"engagement_rate\"]}}"
+            },
+            {
+              "name": "conversions",
+              "value": "={{$node[\"Simulate Metrics\"].json[\"conversions\"]}}"
+            }
+          ]
+        }
+      },
+      "id": "store-metrics",
+      "name": "Store Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{$env.API_HOST}}/analytics/report/summary",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{$env.API_KEY}}"
+            }
+          ]
+        }
+      },
+      "id": "generate-report",
+      "name": "Generate Daily Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "message": "=## Daily Analytics Report 📊\\n\\n**Total Impressions:** {{$json[\"total_impressions\"]}}\\n**Total Clicks:** {{$json[\"total_clicks\"]}}\\n**Average Engagement Rate:** {{($json[\"engagement_rate\"] * 100).toFixed(2)}}%\\n**Total Conversions:** {{$json[\"conversions\"]}}\\n**ROI:** {{($json[\"roi\"] * 100).toFixed(1)}}%\\n\\n**Top Performing Platform:** {{$json[\"top_platform\"]}}\\n**Best Content:** {{$json[\"best_performing_content\"]}}"
+      },
+      "id": "send-report",
+      "name": "Send Daily Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1850, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Published Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Published Content": {
+      "main": [
+        [
+          {
+            "node": "Split Content Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Content Items": {
+      "main": [
+        [
+          {
+            "node": "Check Platform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Platform": {
+      "main": [
+        [
+          {
+            "node": "Get LinkedIn Stats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Facebook Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LinkedIn Stats": {
+      "main": [
+        [
+          {
+            "node": "Simulate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Facebook Stats": {
+      "main": [
+        [
+          {
+            "node": "Simulate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Store Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Metrics": {
+      "main": [
+        [
+          {
+            "node": "Split Content Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Content Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Generate Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Daily Report": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
