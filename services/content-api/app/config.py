@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Database
     database_url: Optional[str] = "postgresql+asyncpg://app:password@postgres-app/automation"
     
-    # Redis (for queuing)
+    # Redis (for caching and queuing)
     redis_url: str = "redis://redis:6379"
     
     # Rate Limiting
@@ -25,6 +25,29 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4-turbo-preview"
     openai_temperature: float = 0.7
     openai_max_tokens: int = 2000
+    
+    # Production Features
+    enable_content_moderation: bool = True
+    enable_caching: bool = True
+    enable_usage_tracking: bool = True
+    enable_webhooks: bool = True
+    
+    # Usage Limits
+    daily_request_limit: int = 1000
+    daily_token_limit: int = 1000000
+    daily_cost_limit: float = 50.0
+    
+    # Webhook Settings
+    webhook_timeout: int = 30
+    webhook_retry_attempts: int = 3
+    
+    # Content Settings
+    max_content_length: int = 4000
+    content_cache_ttl: int = 3600
+    
+    # Logging
+    log_level: str = "INFO"
+    json_logs: bool = True
     
     # Environment
     environment: str = "development"
